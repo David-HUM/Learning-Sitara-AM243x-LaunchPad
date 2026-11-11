@@ -32,4 +32,12 @@ Los templates descargan las herramientas de sysconfig y Clang.
 sudo apt update && sudo apt install -y python3-pyelftools python3-construct python3-setuptools
 es necesario para poder compilar losproyectos desde el CCS
 
+click derecho build configuration release -Para henerar el mcelf.hs_fs
+Modificar el default_sbl_ospi.cfg y darle la ubicacion del mcelf
 
+Una carpeta de lo especificado en el .cfg no encuentra los archivos que requiere, para eso hay que ir a la carpeta y darle make desde el terminal.
+
+El siguiente paso es ejecutar con el uniflash.py el archivo de configuracion, ademas de especificarle el puerto en el que esta conectada la placa.
+
+python3 uart_uniflash.py -p /dev/ttyACM0 --cfg=sbl_prebuilt/am243x-lp/default_sbl_ospi.cfg
+"Nota importante: El ejemplo que se modifique de default_sbl_xxxx.cfg define con que metodo booteara el codigo."
