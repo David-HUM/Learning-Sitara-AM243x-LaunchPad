@@ -1,0 +1,4 @@
+[manifest]
+path = mcupsdk-manifests.git
+file = am243x/dev.yml
+

@@ -1,0 +1,10 @@
+# Configuración y artefactos de cada computadora. No publicar rutas personales.
+/.sitara.local.json
+/.sitara/
+/.zephyr.local.json
+/build/
+/tools/sbls-am243x-lp/zephyr_hellw_sbl_ospi.cfg
+__pycache__/
+*.pyc
+
+/CCS_20.3.0.00014_linux.zip
