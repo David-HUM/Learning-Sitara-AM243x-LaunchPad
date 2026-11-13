@@ -2,12 +2,18 @@
 
 **Base:** [TI AM243x LaunchPad, documentación oficial de Zephyr](https://docs.zephyrproject.org/latest/boards/ti/lp_am243/doc/index.html).
 **Consulta y contraste local:** 2026-11-12. `latest` es una referencia móvil.
-**Alcance:** Ubuntu, Cortex-R5F0_0, Hello World, imágenes de desarrollo y arranque desde QSPI mediante SBL OSPI.
+**Alcance:** Ubuntu, Cortex-R5F0_0, Hello World y app propia `hola_zephyr`, imágenes de desarrollo y arranque desde QSPI mediante SBL OSPI.
 
 Esta guía sigue las secciones oficiales de bootflow, preparación del MCU+ SDK,
 construcción de SBL, conversión de imágenes, grabación y depuración. Adapta los
 pasos a este proyecto y conserva las correcciones encontradas al compilar.
 No sustituye la documentación de seguridad de TI ni acredita un diseño para producción.
+
+**Confirmación posterior de David, 2026-11-12:** informó que completó el
+recorrido de esta guía hasta el final. La app independiente de la sección 13
+reutiliza esa preparación; no requiere repetir la construcción/instalación
+del SBL. Las notas históricas de diagnóstico conservan sus límites de evidencia
+y no son pasos obligatorios para la nueva app.
 
 **Anotación de David:** `download_components.sh` no funciona en su recorrido.
 La causa exacta no se ha diagnosticado; no se presenta como un fallo universal
@@ -45,6 +51,8 @@ cd ~/projects/Learning-Sitara-AM243x-LaunchPad
 | --- | --- |
 | `zephyr/` | Copia completa de Zephyr que se compila, incluido `samples/hello_world`. |
 | `build/zephyr_hello/` | Build fijo nuevo. No reutiliza el caché copiado de `zephyr/build/am243_hello`. |
+| `apps/hola_zephyr/` | App propia que imprime `hola soy zephyr` y duerme tres segundos entre mensajes. |
+| `build/hola_zephyr/` | Build fijo, imágenes, copia del flash writer y CFG exclusivos de la app propia. |
 | `mcu_plus_sdk/` | SDK TI desde Git, con el parche local del bootloader y las dependencias incorporadas. |
 | `mcupsdk-manifests.git/`, `.west/config` | Manifiesto del workspace **MCU+ SDK**, no del workspace Zephyr anterior. |
 | `~/ti/mcu_plus_sdk_am243x_12_01_00_33/` | SDK instalado: fuente de contraste y de componentes que faltaban en el clon. |
@@ -374,7 +382,7 @@ Puntos comprobados del adaptador [`scripts/zephyr_local.py`](scripts/zephyr_loca
   fijo nuevo y se verifica `ZEPHYR_BASE` en `CMakeCache.txt`.
 - El adaptador y Uniflash usan `/usr/bin/python3`; CMake, el generador MCELF
   y el firmador de aplicación usan el Python especificado en `.zephyr.local.json`.
-- Las herramientas TI de este flujo se toman actualmente del **SDK instalado**,
+- Las herramientas TI de este flujo de **Hello World** se toman del **SDK instalado**,
   según el JSON. No se cambian al clon por compilar sus bibliotecas.
 - Generación con `genimage_am64x.py`, argumento `--core-img=4:<ELF>`;
   se omite `--xip`, no se escribe `--xip=None`.
@@ -391,6 +399,13 @@ Las notas de migración TI del SDK 12.01 indican que RPRC está deprecado.
 Firmar directamente `zephyr.elf` no crea un MCELF: sólo antepone el certificado.
 David observó un fallo al usar ese ELF firmado. La conversión al formato
 esperado por el SBL y la firma son pasos distintos.
+
+**Compatibilidad del lector MCELF:** el generador AM64 de TI 12.01 elimina
+la tabla de secciones (`e_shoff = e_shnum = 0`) pero conserva `e_shstrndx`.
+Eso hizo fallar pyelftools con la nueva app. El adaptador pone ese índice a
+cero sólo en una copia en memoria para leer las cabeceras de programa;
+**no modifica el MCELF generado, el firmado ni las herramientas TI**.
+Los segmentos y el payload firmado siguen comparándose con sus bytes originales.
 
 ## 9. Grabación: separar instalación del SBL y actualización de aplicación
 
@@ -469,25 +484,24 @@ del orden visual del texto. No cambiar BOOT ni apagar durante una escritura acti
 | Uniflash completa `flash` y `flashverify` | Grabación y verificación reportadas por la herramienta | Aparición de Hello World |
 | `switching to application` | El SBL anunció la entrega de control | Zephyr alcanzó `main()` o su consola funciona |
 
-El intento fallido observado terminó durante el envío XMODEM del flash writer.
-Un reintento explícito posterior completó las operaciones de Uniflash. No se
-convirtió el intento anterior en éxito: se conservaron sus registros en un
-subdirectorio `previous-flash-<UUID>` del build.
+**Comportamiento vigente solicitado por David, 2026-11-12:** un fallo de
+grabación no bloquea el siguiente comando. Para reintentar, preparar UART BOOT,
+cerrar la consola y volver a ejecutar `just flash-hola` o `just flash-zephyr`.
+No hace falta mover archivos, recompilar, volver a configurar ni usar `--force`.
 
-`receipt.json` en estado `started` después de un fallo es una guarda frente
-a repetir una operación cuyo resultado no está confirmado. No borrarlo ni
-marcarlo `completed` para ocultar el problema. Para un reintento deliberado:
+La salida se muestra únicamente en terminal; **no se guardan logs, recibos ni
+archivos históricos de intentos**. Los archivos de intentos anteriores a este
+cambio se ignoran sin borrarlos o modificarlos. El `verification.json` del
+build sigue validando la imagen: no es un historial de grabaciones.
 
-1. Confirmar que el proceso anterior terminó y que no hay otra escritura activa.
-2. Revisar `operation.log`, preparar UART BOOT y liberar el puerto.
-3. Conservar el recibo y log anteriores; autorizar un único intento nuevo.
-4. No afirmar finalización hasta tener el resultado de ese intento.
+Cada comando ejecuta una sola vez la herramienta TI, sin reintento en bucle.
+Se mantienen la exclusión de operaciones simultáneas, la comprobación de
+imágenes/puerto y la detección de errores. Un fallo nunca se presenta como éxito.
 
-El reintento realizado fue puntual. No se añadió una opción persistente
-`--force` ni se eliminó la guarda del adaptador. No confundir un segundo
-flasheo iniciado desde otra terminal con la continuación del primero.
+## 11. Diagnóstico opcional: antecedente del silencio tras el SBL
 
-## 11. Optimización para diagnosticar el silencio tras el SBL
+Este apartado conserva el antecedente anterior a la confirmación de David
+sobre haber completado la guía. No es un requisito para crear o grabar otra app.
 
 La guía recomienda `sbl_null` más depurador para desarrollo. Es una alternativa
 para cargar el ELF y observar PC, reset y excepciones sin convertir y grabar
@@ -518,12 +532,89 @@ Conservar estas distinciones antes de otra prueba:
 coincidencia de fuentes PHY y ENET con el instalador; componente OSPI presente;
 parche `entryPoint` existente; reglas y bibliotecas de los dos SBL;
 compilación/conversión/firma del Hello World local y `check-zephyr`;
-26 pruebas sintéticas del adaptador. Uniflash completó el reintento descrito.
+68 pruebas sin hardware del adaptador y del programa con APIs simuladas,
+incluidas las de reintento manual sin guardar historial.
+Uniflash completó el reintento descrito. La nueva app `hola_zephyr` se compiló,
+convirtió, firmó y pasó `check-hola`; `check-zephyr` también sigue pasando.
 
 **No verificado aquí:** éxito de `download_components.sh`, compilación completa
 de todas las bibliotecas, ejecución de la ruta reducida de SBL, despliegue y
 arranque de un SBL reconstruido con el parche, Hello World en consola y
 depuración por JTAG/OpenOCD. No hay aprobación de producción ni publicación.
+Lo anterior distingue las comprobaciones directas del agente de la confirmación
+posterior del recorrido por David. La captura más reciente alcanza Z4, pero no
+Z4A. El mapa pone a continuación el init de pinctrl TI K3, que sólo ejecuta
+`DEVICE_MMIO_MAP`; Z4PA-Z4PD instrumentan esa función para acotar la llamada y
+su retorno. No se demuestra bloqueo ni pérdida de la traza UART. Capturas
+anteriores alcanzaron fases posteriores, por lo que hay que confirmar la imagen
+exacta. El recibo y las pruebas host no miden ejecución física.
+
+## 13. Aplicación propia y persistente: `hola_zephyr`
+
+La aplicación está en [`apps/hola_zephyr/`](apps/hola_zephyr/README.md), con
+`CMakeLists.txt`, `prj.conf` y `src/main.c`, separada de `zephyr/samples/hello_world`.
+Usa `printk("hola soy zephyr\n")` y `k_sleep(K_SECONDS(3))` en un bucle del hilo
+principal: primer mensaje inmediato, pausa nominal de tres segundos, sin shell
+ni espera ocupada. Para el diagnóstico actual se instrumentaron condicionalmente
+`zephyr/arch/arm/core/cortex_a_r/prep_c.c` y `zephyr/kernel/init.c` con Z1A-Z1T
+y Z2A-Z2D; el flujo original queda intacto si se desactiva
+`CONFIG_HOLA_EARLY_UART_TRACE`. No se editan fuentes de placa, SDK TI o SBL.
+La prueba actual habilita MPU, banner, consola temprana, assertions y diagnóstico
+de fallos. Usa un overlay de la app para mapear ATCM completo y una cabecera local
+para corregir la conversión de regiones MPU en ARMv7-R de este checkout. Véase
+[Prueba con MPU y diagnóstico](apps/hola_zephyr/README.md#prueba-con-mpu-y-diagnóstico)
+para el motivo, alcance y límites. El adaptador incluye y verifica por hash ambos
+archivos; no basta con cambiar `prj.conf` y reutilizar una imagen anterior.
+La flag propia `CONFIG_HOLA_EARLY_UART_TRACE=y` añade Z0-Z2 antes del kernel,
+Z1A-Z1T durante `z_prep_c`, Z2A-Z2D dentro de `z_cstart`, Z3-Z8 hasta `main()`
+y Z1M-A...Z1M-P dentro de la inicialización del VIM y sus wrappers, ZR1-ZR13
+dentro del reset, Z4PA-Z4PD dentro de pinctrl y Z4A-Z4C tras los drivers
+PRE_KERNEL_1, directamente por UART. La última captura llega a Z4, pero no
+Z4A; falta observar las trazas nuevas de pinctrl. Conserva los vectores y el
+primer marcador en el mismo segmento ELF desde cero. Detalles y límites:
+[trazas de arranque](apps/hola_zephyr/README.md#flag-de-trazas-anteriores-al-kernel).
+
+Desde la raíz del proyecto:
+
+```bash
+just build-hola && just check-hola
+```
+
+Artefactos fijos:
+
+```text
+build/hola_zephyr/
+├── zephyr/zephyr.elf
+├── boot-image/hola_zephyr.mcelf
+├── boot-image/hola_zephyr.mcelf.hs_fs
+├── boot-image/verification.json
+├── sbl_uart_uniflash.release.hs_fs.tiimage
+└── flash-hola-zephyr.cfg
+```
+
+Para conversión y firma se reutiliza el SDK 12.01 de `.zephyr.local.json`.
+Para grabación se seleccionan expresamente Uniflash y el flash writer del
+clon `mcu_plus_sdk/`. El build **copia** el writer compilado de
+`mcu_plus_sdk/tools/boot/sbl_prebuilt/am243x-lp/` al nuevo directorio de trabajo,
+como pide la guía remota; no omite ese paso ni lo sustituye por un enlace.
+El CFG referencia esa copia por nombre y la imagen por su ruta local real;
+Uniflash se ejecuta desde `build/hola_zephyr/`. No hay variables sin expandir.
+
+Para una escritura explícita, con UART BOOT preparado y la consola cerrada:
+
+```bash
+just flash-hola /dev/ttyACM0
+```
+
+Usar el puerto real. Este comando **sí escribe**: sólo `flash` y `flashverify`
+de `hola_zephyr.mcelf.hs_fs` en `0x80000`. Conserva el SBL de `0x0` y los datos
+PHY; no ejecuta de nuevo el CFG que instala todo. Tras terminar correctamente,
+apagar, seleccionar QSPI y encender con consola a 115200, 8N1.
+
+El writer es temporal en RAM durante la grabación, pero **la aplicación queda
+en flash**. Los fuentes, recetas y rutas de build son permanentes y no están
+en carpetas temporales de diagnóstico. `build/` continúa ignorado por Git.
+Los comandos `*-zephyr` siguen seleccionando Hello World; los `*-hola`, esta app.
 
 Fuentes para contrastar o actualizar esta guía:
 

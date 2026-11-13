@@ -1,7 +1,7 @@
 """LP-AM243 launch adapter. SDK sources are read, never edited or imported.
 
 Only flash/boot open hardware. config/check/plan work with files; ports only
-enumerates metadata. Local paths, generated aliases and logs stay gitignored.
+enumerates metadata. Local paths, generated aliases and builds stay gitignored.
 """
 import argparse
 from contextlib import contextmanager
@@ -383,27 +383,23 @@ def vendor_command(state, port=''):
 
 
 def run_vendor(command, work, *, factory=subprocess.Popen):
-    """One attempt only. A zero exit without the terminal SDK marker is unknown."""
-    if (work/'receipt.json').exists():
-        previous = json.loads((work/'receipt.json').read_text())
-        if previous.get('status') != 'completed':
-            raise Problem('El intento anterior tiene resultado incierto. Revisa su log y el estado del dispositivo; just config prepara un nuevo intento explícito.')
-    atomic_json(work/'receipt.json', dict(status='started'))
+    """One attempt per invocation, terminal output only, no persisted history.
+
+    Legacy receipts/logs are ignored, not changed or deleted. The caller holds
+    the project operation lock and validates readiness before each invocation.
+    """
     errors, completed = False, False
     process = None
     try:
-        with (work/'operation.log').open('w') as log:
-            process = factory(command, cwd=work, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
-            for line in process.stdout:
-                print(line, end='', flush=True)
-                log.write(line)
-                errors |= bool(re.search(r'\bERROR\b|\bFAILED\b', line, re.I))
-                completed |= 'All commands from config file are executed' in line
-            code = process.wait()
+        process = factory(command, cwd=work, stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True, errors='replace', start_new_session=True)
+        for line in process.stdout:
+            print(line, end='', flush=True)
+            errors |= bool(re.search(r'\bERROR\b|\bFAILED\b', line, re.I))
+            completed |= 'All commands from config file are executed' in line
+        code = process.wait()
         if code or errors or not completed:
-            raise Problem('La herramienta TI no confirmó una finalización completa. Resultado incierto: revisa operation.log antes de repetir. No hay reintento automático.')
-        atomic_json(work/'receipt.json', dict(status='completed', returncode=code))
+            raise Problem('La herramienta TI no confirmó una finalización completa. Puedes reintentar ejecutando el mismo comando. No hay reintento automático.')
     except KeyboardInterrupt:
         if process is not None and process.poll() is None:
             os.killpg(process.pid, signal.SIGINT)
@@ -412,7 +408,7 @@ def run_vendor(command, work, *, factory=subprocess.Popen):
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGTERM)
                 process.wait()
-        raise Problem('Operación interrumpida; el contenido del dispositivo puede haber quedado parcial. No se reintenta.') from None
+        raise Problem('Operación interrumpida; el dispositivo puede haber quedado parcial. Puedes volver a ejecutar el comando para reintentar.') from None
     print('Herramienta TI finalizada sin errores reportados. Esto no certifica el arranque físico de la aplicación.')
 
 
@@ -421,9 +417,6 @@ def execute(root, action, explicit='', *, selector=None, dfu=None, runner=None):
     if (action == 'boot') != (state['mode'] == 'uart'):
         raise Problem('Usa just boot para uart y just flash para los perfiles que escriben flash.')
     dependencies(state['mode'])
-    receipt = work/'receipt.json'
-    if receipt.exists() and json.loads(receipt.read_text()).get('status') != 'completed':
-        raise Problem('Hay un intento de resultado incierto. Revisa operation.log antes de preparar otro.')
     if state['mode'] == 'dfu':
         if explicit:
             raise Problem('DFU no utiliza un puerto ACM; no pases un puerto a just flash.')

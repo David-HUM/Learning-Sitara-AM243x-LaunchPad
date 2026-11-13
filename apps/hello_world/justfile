@@ -1,0 +1,23 @@
+set positional-arguments
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+alias b := build
+alias f := flash
+
+default:
+    @just --list
+
+build:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py build --app hello_world
+
+package:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py package --app hello_world
+
+check:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py check --app hello_world
+
+flash port:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py flash --app hello_world --port "$1"
+
+serial port:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py serial --app hello_world --port "$1"

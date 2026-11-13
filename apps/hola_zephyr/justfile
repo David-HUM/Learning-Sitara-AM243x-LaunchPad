@@ -1,0 +1,31 @@
+set positional-arguments
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+alias b := build
+alias f := flash
+
+default:
+    @just --list
+
+build:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py build --app hola_zephyr
+
+# Construye sólo una copia local del SBL; no lo instala en la placa ni en el SDK.
+build-sbl:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py build-sbl --app hola_zephyr
+
+# Incluye pilas/BSS del SBL, PT_LOAD de la app y CONFIG_ARM_MPU generado.
+check-boot:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py check-boot --app hola_zephyr
+
+package:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py package --app hola_zephyr
+
+check:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py check --app hola_zephyr
+
+flash port:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py flash --app hola_zephyr --port "$1"
+
+serial port:
+    @/usr/bin/python3 ../../scripts/zephyr_local.py serial --app hola_zephyr --port "$1"

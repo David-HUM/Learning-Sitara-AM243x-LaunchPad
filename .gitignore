@@ -8,3 +8,16 @@ __pycache__/
 *.pyc
 
 /CCS_20.3.0.00014_linux.zip
+
+# Dependencies are described by apps/west.yml, not vendored as gitlinks.
+# Already tracked gitlinks/config remain in the index until commit preparation.
+/.west/
+/.venv/
+/zephyr/
+/modules/
+/mcu_plus_sdk/
+/mcupsdk_setup/
+/mcupsdk-manifests.git/
+/apps/*/build/
+/apps/*/build-debug/
+**/.letta/

@@ -1,9 +1,16 @@
 set positional-arguments
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-# Ayuda y perfil seleccionado; no abre dispositivos.
+# Lista de operaciones; no abre dispositivos ni instala herramientas.
 default:
-    @python3 scripts/sitara.py info
+    @just --list
+
+apps:
+    @/usr/bin/python3 scripts/zephyr_local.py apps
+
+# Inspección local del manifiesto y revisiones; nunca ejecuta west update.
+workspace:
+    @/usr/bin/python3 scripts/zephyr_local.py workspace
 
 # Perfiles admitidos para la LP-AM243.
 modes:
@@ -39,7 +46,7 @@ test:
 
 # Copia local: compila Hello World, genera MCELF y firma, sin acceder a la placa.
 build-zephyr:
-    @/usr/bin/python3 scripts/zephyr_local.py build
+    @/usr/bin/python3 scripts/zephyr_local.py pipeline
 
 # Comprueba el build, las imágenes y el cfg fijo; no abre UART.
 check-zephyr:
@@ -48,3 +55,16 @@ check-zephyr:
 # Escribe sólo la aplicación en 0x80000 y verifica; conserva el SBL existente.
 flash-zephyr port="":
     @/usr/bin/python3 scripts/zephyr_local.py flash --port "$1"
+
+# App propia: SBL aislado y app, empaquetado/firma y validación; sin UART.
+build-hola:
+    @/usr/bin/python3 scripts/zephyr_local.py build-sbl --app hola_zephyr
+    @/usr/bin/python3 scripts/zephyr_local.py pipeline --app hola_zephyr
+
+# Valida sólo hola_zephyr; no abre UART ni cambia la selección de Hello World.
+check-hola:
+    @/usr/bin/python3 scripts/zephyr_local.py check --app hola_zephyr
+
+# Graba hola_zephyr en 0x80000 y verifica; conserva SBL y datos PHY existentes.
+flash-hola port="":
+    @/usr/bin/python3 scripts/zephyr_local.py flash --app hola_zephyr --port "$1"

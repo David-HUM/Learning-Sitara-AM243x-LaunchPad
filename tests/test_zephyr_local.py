@@ -50,10 +50,28 @@ class LocalZephyrTests(unittest.TestCase):
         settings = {'python': str(py), 'zephyr_sdk': str(zsdk),
                     'ti_sdk': str(sdk), 'modules': [str(module)]}
         (self.root/local.SETTINGS).write_text(json.dumps(settings))
-        app = self.root/'zephyr/samples/hello_world'
+        app = self.root/'apps/hello_world'
         (app/'src').mkdir(parents=True)
         for name in ('CMakeLists.txt', 'prj.conf', 'src/main.c'):
             (app/name).write_text('synthetic source')
+        (self.root/'zephyr/kernel').mkdir(parents=True)
+        (self.root/'zephyr/kernel/init.c').write_text('synthetic kernel init')
+        (self.root/'zephyr/arch/arm/core/cortex_a_r').mkdir(parents=True)
+        (self.root/'zephyr/arch/arm/core/cortex_a_r/prep_c.c').write_text(
+            'synthetic architecture preparation')
+        (self.root/'zephyr/arch/arm/core/cortex_a_r/reset.S').write_text(
+            'synthetic architecture reset')
+        (self.root/'zephyr/drivers/interrupt_controller').mkdir(parents=True)
+        (self.root/'zephyr/drivers/interrupt_controller/intc_vim.c').write_text(
+            'synthetic VIM interrupt initialization')
+        (self.root/'zephyr/drivers/pinctrl').mkdir(parents=True)
+        (self.root/'zephyr/drivers/pinctrl/pinctrl_ti_k3.c').write_text(
+            'synthetic TI K3 pinctrl initialization')
+        (self.root/'zephyr/arch/arm/core/cortex_a_r/irq_init.c').write_text(
+            'synthetic ARM IRQ initialization')
+        (self.root/'zephyr/soc/ti/k3/common/cortex_r').mkdir(parents=True)
+        (self.root/'zephyr/soc/ti/k3/common/cortex_r/soc.c').write_text(
+            'synthetic SoC IRQ initialization')
         for name in ('tools/boot/multicore-elf/genimage_am64x.py',
                      'source/security/security_common/tools/boot/signing/appimage_x509_cert_gen.py',
                      'source/security/security_common/tools/boot/signing/app_degenerateKey.pem',
@@ -79,8 +97,8 @@ class LocalZephyrTests(unittest.TestCase):
         (self.p['build']/'CMakeCache.txt').write_text(
             ''.join(f'{k}:STRING={v}\n' for k, v in values.items()))
 
-    def images(self, core=4):
-        loads = [(1, 0, bytes(60), 60), (1, 0x70080000, b'Hello World! synthetic', 64)]
+    def images(self, core=4, message=b'Hello World! synthetic'):
+        loads = [(1, 0, bytes(60), 60), (1, 0x70080000, message, max(64, len(message)))]
         self.p['elf'].write_bytes(elf_file(loads))
         notes = note(b'Segment Map ', 0xbbbb7777, bytes([core, core]))
         notes += note(b'Entry Points ', 0xcccc9999, struct.pack('<II', core, 0))
@@ -91,7 +109,7 @@ class LocalZephyrTests(unittest.TestCase):
 
     def ready(self):
         sitara.atomic_json(self.p['verification'], {'status': 'ready',
-                           'hashes': local.snapshots(self.p)})
+                           'app': self.p['app_name'], 'hashes': local.snapshots(self.p)})
 
     def checking(self):
         with patch.object(sitara, 'dependencies'), patch('sys.stdout', new_callable=io.StringIO):
@@ -99,7 +117,7 @@ class LocalZephyrTests(unittest.TestCase):
 
     def test_paths_use_local_source_and_fixed_build(self):
         self.assertEqual(self.p['source'], self.root/'zephyr')
-        self.assertEqual(self.p['build'], self.root/'build/zephyr_hello')
+        self.assertEqual(self.p['build'], self.root/'apps/hello_world/build')
         self.assertEqual(self.p['python'], self.root/'venv/bin/python')
 
     def test_settings_require_absolute_paths(self):
@@ -224,11 +242,12 @@ class LocalZephyrTests(unittest.TestCase):
         with patch.object(sitara, 'select_port', side_effect=AssertionError('UART forbidden')):
             with patch('sys.stdout', new_callable=io.StringIO):
                 local.build(self.p, runner=runner)
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[0][0][1:4], ['-m', 'west', 'build'])
         self.assertIn('-DZEPHYR_BASE='+str(self.p['source']), calls[0][0])
         self.assertIn('-DPython3_EXECUTABLE='+str(self.p['python']), calls[0][0])
         self.assertEqual(calls[0][1]['env']['ZEPHYR_BASE'], str(self.p['source']))
-        self.assertIn('--core-img=4:'+str(self.p['elf']), calls[2][0])
+        self.assertIn('--core-img=4:'+str(self.p['elf']), calls[1][0])
         self.assertEqual(json.loads(self.p['verification'].read_text())['status'], 'ready')
 
     def test_old_exports_do_not_select_old_source_or_image(self):
@@ -244,8 +263,8 @@ class LocalZephyrTests(unittest.TestCase):
         self.assertNotIn('BOARD', calls[0][1]['env'])
         self.assertNotIn('ZEPHYR_MODULES', calls[0][1]['env'])
         self.assertNotIn('CONF_FILE', calls[0][1]['env'])
-        self.assertIn('--bin', calls[3][0])
-        self.assertIn(str(self.p['mcelf']), calls[3][0])
+        self.assertIn('--bin', calls[2][0])
+        self.assertIn(str(self.p['mcelf']), calls[2][0])
 
     def test_flash_only_calls_mocked_vendor_with_expected_cfg(self):
         calls = []
@@ -255,10 +274,13 @@ class LocalZephyrTests(unittest.TestCase):
         self.assertEqual(calls[0][0][-3:], ['-p', '/dev/fake', '--cfg='+str(self.p['cfg'])])
         self.assertEqual(calls[0][1], self.p['build'])
 
-    def test_uncertain_flash_blocks_before_opening_port(self):
+    def test_old_uncertain_receipt_does_not_block_explicit_retry(self):
         sitara.atomic_json(self.p['build']/'receipt.json', {'status': 'started'})
-        with self.assertRaises(sitara.Problem):
-            local.flash(self.p, selector=lambda _: self.fail('must not open UART'))
+        calls = []
+        with patch.object(sitara, 'dependencies'), patch('sys.stdout', new_callable=io.StringIO):
+            local.flash(self.p, '/dev/fake', selector=lambda port: port,
+                        vendor=lambda cmd, cwd: calls.append((cmd, cwd)))
+        self.assertEqual(len(calls), 1)
 
     def test_change_while_selecting_port_blocks_vendor(self):
         def select(port):

@@ -1,0 +1,96 @@
+# Local application workspace. Revisions describe the inspected baseline;
+# existing TI/Zephyr diagnostic changes must be preserved separately.
+manifest:
+  version: "1.0"
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+    - name: ti
+      url-base: https://github.com/TexasInstruments
+  projects:
+    - name: zephyr
+      remote: zephyrproject
+      revision: 5a56224939aac71065aacd5dd69942a8e67565c6
+      path: zephyr
+      west-commands: scripts/west-commands.yml
+    # Flatten the three selected entries from that Zephyr revision. This also
+    # works with existing clones without changing their manifest-rev branches.
+    - name: cmsis
+      remote: zephyrproject
+      revision: 512cc7e895e8491696b61f7ba8066b4a182569b8
+      path: modules/hal/cmsis
+    - name: cmsis_6
+      remote: zephyrproject
+      repo-path: CMSIS_6
+      revision: b2dfbe1a20bbd49c2d2c605073799671074bbb30
+      path: modules/hal/cmsis_6
+    - name: hal_ti
+      remote: zephyrproject
+      revision: 2e6514333cdb59e44a7635fb5852035c325f4c11
+      path: modules/hal/ti
+    - name: mcupsdk-core
+      remote: ti
+      revision: 4b9a66f4e18e02a834961f5f834155c846cab041
+      path: mcu_plus_sdk
+    - name: mcupsdk-setup
+      remote: ti
+      revision: 1d0db45f2f3f45b74204df2e292e33f8758adff5
+      path: mcupsdk_setup
+    - name: mcupsdk-manifests
+      remote: ti
+      revision: 8691c3094d4ae74b821645f7cc862d3f04b93e2f
+      path: mcupsdk-manifests.git
+    - name: mcupsdk-FreeRTOS-Kernel
+      remote: ti
+      revision: 30ede57ceadd99459800a3b7c8d8cc5f7738a927
+      path: mcu_plus_sdk/source/kernel/freertos/FreeRTOS-Kernel
+    - name: mcupsdk-FreeRTOS-Posix
+      remote: ti
+      revision: 8bd58ae1e0bdbf9a28d010514ca792ca44845246
+      path: mcu_plus_sdk/source/kernel/freertos/FreeRTOS-POSIX
+    - name: mcupsdk-enet-lld
+      remote: ti
+      revision: 46d891bd4963ea8bfdcc03b26022c47eaf40a4bb
+      path: mcu_plus_sdk/source/networking/enet/core
+    - name: mcupsdk-FreeRTOS-FAT
+      remote: ti
+      revision: 878f84cb72f479176242ddef6f899a4ce75ced55
+      path: mcu_plus_sdk/source/fs/freertos_fat/FreeRTOS-FAT
+    - name: mcupsdk-littlefs
+      remote: ti
+      revision: 551e0e8f9701b6bd228d9e35e89e72c889c3b3f7
+      path: mcu_plus_sdk/source/fs/littlefs/LittleFS
+    - name: lwip
+      url: https://git.savannah.gnu.org/git/lwip.git
+      revision: 0a0452b2c39bdd91e252aef045c115f88f6ca773
+      path: mcu_plus_sdk/source/networking/lwip/lwip-stack
+    - name: tinyusb
+      url: https://github.com/hathach/tinyusb
+      revision: 9e91b02ec7fb3502747b5c413a4824654fa7fc7e
+      path: mcu_plus_sdk/source/usb/tinyusb/tinyusb-stack
+    - name: mcupsdk-cmsis
+      remote: ti
+      revision: 29d2672d890667c854d859cb9344c7214c57e674
+      path: mcu_plus_sdk/source/cmsis
+    - name: mbedtls
+      url: https://github.com/Mbed-TLS/mbedtls
+      revision: 53546ea099f6f53d0be653a64accd250e170337f
+      path: mcu_plus_sdk/source/networking/mbedtls_library/mbedtls
+    - name: enet-tsn-stack
+      remote: ti
+      revision: 7248ceb656d65ebc5d233fe1708ce15368c762f3
+      path: mcu_plus_sdk/source/networking/tsn/tsn-stack
+    - name: multicore-elf
+      remote: ti
+      revision: c43c01bfac3a44998f772d204de58b4038b8ffc8
+      path: mcu_plus_sdk/tools/boot/multicore-elf
+    - name: mcupsdk-sysconfig
+      remote: ti
+      revision: 1deac63c97c429ea3f82b9dccad8f144d746dd2a
+      path: mcu_plus_sdk/source/sysconfig
+    - name: tifs-mcu-common
+      remote: ti
+      revision: 8d201ae32d22d8f4db9d86f1c51112b19486c568
+      path: mcu_plus_sdk/source/security/security_common
+  self:
+    path: apps

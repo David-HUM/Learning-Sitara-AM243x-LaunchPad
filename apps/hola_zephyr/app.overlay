@@ -1,0 +1,27 @@
+#include <zephyr/dt-bindings/memory-attr/memory-attr-arm.h>
+
+/*
+ * Reserve the existing 1 KiB ROMSTART region for vectors and the early
+ * marker. Keep other ATCM allocations outside that region. Describe
+ * full, aligned ATCM separately for the MPU, including vectors at zero.
+ */
+&atcm {
+	reg = <0x400 0x7c00>;
+	/delete-property/ zephyr,memory-attr;
+};
+
+/ {
+	mpu-memory {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		atcm_mpu: memory@0 {
+			compatible = "zephyr,memory-region";
+			reg = <0x0 0x8000>;
+			zephyr,memory-region = "ATCM_MPU";
+			zephyr,memory-attr = <DT_MEM_ARM_MPU_RAM>;
+		};
+	};
+};

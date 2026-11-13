@@ -1,4 +1,7 @@
 [manifest]
-path = mcupsdk-manifests.git
-file = am243x/dev.yml
+path = apps
+file = west.yml
+
+[zephyr]
+base = zephyr
 

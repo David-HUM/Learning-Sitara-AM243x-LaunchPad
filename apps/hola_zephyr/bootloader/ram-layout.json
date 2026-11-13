@@ -1,0 +1,6 @@
+{
+  "msram_code_start": "0x70000100",
+  "msram_code_size": "0x5ff00",
+  "msram_stacks_start": "0x70060000",
+  "msram_stacks_size": "0x20000"
+}

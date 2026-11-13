@@ -11,9 +11,16 @@ Las secciones 3 a 9 describen el procedimiento manual. Para preparar los
 perfiles con comandos, usar la [automatización con `just`](#11-automatizar-con-just).
 Son alternativas: no es necesario ejecutar ambos recorridos para una grabación.
 
-Para Zephyr en LP-AM243 con MCU+ SDK 12.01, consultar también
+Para Zephyr, el flujo actual del workspace y sus dos aplicaciones está en la
+[sección 12](#12-workspace-zephyr-y-aplicaciones-locales). Como antecedente de
+LP-AM243 con MCU+ SDK 12.01, se conserva
 [From guide: adaptación de la guía oficial](from%20guide.md), con las
-dependencias corregidas y una ruta de construcción reducida para los SBL.
+dependencias corregidas y una ruta reducida para construir los SBL. Sus rutas,
+cachés y comandos de preparación antiguos no sustituyen el flujo actual.
+La app propia que saluda cada tres segundos está en
+[`apps/hola_zephyr`](apps/hola_zephyr/README.md), con comandos y artefactos separados.
+El estado y los problemas conocidos de su arranque están resumidos en
+[SUMMARY.md](SUMMARY.md).
 
 ## 1. Objetivo y alcance
 
@@ -534,16 +541,17 @@ usar `sudo` ni modificar grupos o permisos. Los SBL faltantes tampoco se compila
 automáticamente: deben generarse con las herramientas y el objetivo correctos
 del SDK antes de repetir la preparación.
 
-La herramienta TI se ejecuta una sola vez. Su salida y un recibo local quedan
-en `operation.log` y `receipt.json`, dentro de la preparación. Un código de salida
-cero no basta: debe existir la señal final de ejecución y no haberse reportado
+La herramienta TI se ejecuta una sola vez por comando. Su salida se muestra
+en la terminal: **no se crean logs, recibos ni archivos históricos de intentos**.
+Un código de salida cero no basta: debe existir la señal final y no haberse reportado
 errores. Esto indica finalización de la herramienta, **no verificación física
 del arranque**.
 
-Un fallo, interrupción o salida incompleta deja el resultado como incierto y
-bloquea el reintento con esa preparación. Revisar el registro y el estado antes
-de usar `just config` para preparar un nuevo intento deliberado. No hay reintentos
-ni cambios automáticos a otro puerto. `Ctrl+C` solicita detener el grupo de
+Tras un fallo o interrupción se puede **repetir directamente el mismo comando**,
+sin `just config`, `--force`, mover archivos o desbloquear recibos. Los logs y
+recibos antiguos se ignoran; no se borran ni modifican. No hay reintentos en
+bucle ni cambios automáticos de puerto. Se mantiene la exclusión de operaciones
+simultáneas y la comprobación de la imagen y del puerto. `Ctrl+C` solicita detener el grupo de
 procesos de la herramienta; la flash puede quedar parcialmente escrita.
 
 **Validación del adaptador:** pruebas sintéticas y recetas de `just` comprobadas
@@ -551,98 +559,214 @@ sin abrir puertos reales ni ejecutar las herramientas TI sobre la placa.
 La integración física de estos perfiles está pendiente. Esto no cambia el éxito
 de GPIO multiblink confirmado por David con el procedimiento original.
 
-## 12. Hello World de la copia local de Zephyr, sin `export`
+## 12. Workspace Zephyr y aplicaciones locales
 
 Este flujo es independiente de los perfiles genéricos de la sección 11. No usa
 `APP_IMAGE`, `SDK`, `UART_PORT` ni la preparación antigua de `.sitara.local.json`.
-Ejecutar desde la raíz de `Learning-Sitara-AM243x-LaunchPad`:
+Desde la raíz del repositorio:
 
 ```bash
-just build-zephyr
+just apps
+just workspace
+```
+
+El manifiesto propio es **`apps/west.yml`**: fija Zephyr al commit
+`5a56224939aac71065aacd5dd69942a8e67565c6`, declara `cmsis`, `cmsis_6` y
+`hal_ti`, y fija las dependencias TI a sus SHAs locales. `.west/config` usa
+`manifest.path=apps`, `manifest.file=west.yml` y `zephyr.base=zephyr`.
+Se declaran las entradas explícitamente, sin `import`, para conservar las
+referencias `manifest-rev` existentes en los clones. Los comandos de Zephyr se
+registran con `west-commands: scripts/west-commands.yml`.
+
+Los módulos ya instalados se reutilizan mediante **copias locales independientes**
+en `modules/hal/`, incluidos sus directorios Git, no mediante enlaces al workspace
+anterior. `.zephyr.local.json`, ignorado por Git,
+conserva el Python del entorno virtual existente, Zephyr SDK `1.0.1` y MCU+ SDK
+`12.01.00.33`; su lista `modules` apunta a esas copias. Los campos son `python`,
+`zephyr_sdk`, `ti_sdk` y `modules`, con rutas absolutas de cada computadora.
+No hace falta activar el entorno virtual ni introducir `export`.
+**No ejecutar `west update` para este recorrido:** no instala ni descarga nada.
+Fijar revisiones tampoco descarta las modificaciones locales de diagnóstico
+existentes en `zephyr/`; no se modifica vendor como parte de esta reorganización.
+
+> **Pendiente de publicación:** el índice contiene gitlinks sin `.gitmodules`.
+> No se han corregido ni preparado en staging: deben revisarse al preparar un
+> futuro commit autorizado. El manifiesto no resuelve por sí solo ese pendiente;
+> no asumir todavía que un clon limpio reproduce este workspace local.
+
+### Compilar, empaquetar y comprobar por aplicación
+
+Las dos aplicaciones permanentes son `apps/hello_world` y `apps/hola_zephyr`.
+Cada una tiene su `justfile`; ambas usan `scripts/zephyr_local.py` y el target
+`lp_am243/am2434/r5f0_0`. Hello World deja de construirse directamente desde
+`zephyr/samples/hello_world`; el ejemplo original se conserva.
+
+```bash
+cd apps/hello_world
+just build
+just package
+just check
+```
+
+- **`build`** ejecuta `west build`: sólo compila. No genera MCELF, no firma ni
+  prepara la grabación, y no abre UART.
+- **`package`** convierte el ELF a MCELF para core `4`, entrada `0`, firma HS-FS
+  con la clave de desarrollo del MCU+ SDK, verifica y prepara el CFG local.
+- **`check`** comprueba los artefactos preparados sin abrir puertos.
+- **`flash`** es una operación separada y explícita de escritura.
+- **`serial`** abre la consola; no compila ni graba. Requiere puerto explícito.
+
+Desde la raíz se conservan estos alias de compatibilidad:
+
+```bash
+just build-zephyr    # build + package de apps/hello_world
 just check-zephyr
+just build-hola      # SBL aislado + build + package de apps/hola_zephyr
+just check-hola
 ```
 
-`build-zephyr` compila **`zephyr/samples/hello_world` de esta copia**, para
-`lp_am243/am2434/r5f0_0`, convierte el ELF a MCELF con core `4` y lo firma para
-HS-FS con la clave de desarrollo de aplicación del MCU+ SDK. No agrega el
-marcador de diagnóstico ni modifica el ejemplo original, el kernel o el SDK.
-Ni `build-zephyr` ni `check-zephyr` abren UART ni graban la placa.
+Los nuevos resultados quedan en **`apps/<app>/build/`**:
 
-### Archivos y herramientas utilizados
+| Artefacto relativo a cada aplicación | Función |
+| --- | --- |
+| `build/zephyr/zephyr.elf` | ELF compilado |
+| `build/boot-image/<app>.mcelf` | Imagen TI sin XIP |
+| `build/boot-image/<app>.mcelf.hs_fs` | Imagen firmada para grabar |
+| `build/boot-image/verification.json` | Selección de app y hashes locales |
+| `build/flash.cfg` | CFG generado para grabar y verificar sólo la app |
 
-- Build fijo: `build/zephyr_hello/`. No se reutiliza ni borra el caché copiado
-  de `zephyr/build/am243_hello`, porque conserva referencias al workspace anterior.
-- ELF: `build/zephyr_hello/zephyr/zephyr.elf`.
-- MCELF: `build/zephyr_hello/boot-image/hello_world.mcelf`.
-- Imagen que se graba: `build/zephyr_hello/boot-image/hello_world.mcelf.hs_fs`.
-- CFG fijo: `tools/sbls-am243x-lp/zephyr_hellw_sbl_ospi.cfg`.
-- Verificación local: `build/zephyr_hello/boot-image/verification.json`.
+El empaquetado también prepara el CFG de la aplicación. Usa rutas locales reales,
+no `$SDK` ni `$IMAGE`: Uniflash no expande variables de shell en un `.cfg`.
+JSON, CFG y resultados de build quedan fuera de publicación. El adaptador y
+Uniflash usan `/usr/bin/python3`; CMake, MCELF y firma usan el Python configurado.
 
-Las rutas absolutas de este equipo están en **`.zephyr.local.json`**, ignorado
-por Git: Python del entorno virtual existente, Zephyr SDK `1.0.1`, MCU+ SDK
-`12.01.00.33` y los módulos externos ya instalados `cmsis`, `cmsis_6` y `ti`.
-Los módulos se reutilizan desde el workspace anterior; **la aplicación, el
-kernel y las definiciones de placa se compilan desde el árbol local**.
-No se ejecuta `west update` ni se instala o descarga nada automáticamente.
-En otra computadora hay que proporcionar esas cuatro entradas locales.
+**Los cachés anteriores se conservan sin moverlos, borrarlos ni reutilizarlos:**
+`build/zephyr_hello`, `build/hola_zephyr` y `zephyr/build/am243_hello`. También se
+conserva el CFG antiguo `tools/sbls-am243x-lp/zephyr_hellw_sbl_ospi.cfg` como
+artefacto histórico, no como entrada del nuevo flujo. Las instrucciones antiguas
+que apunten a ellos no describen los builds actuales.
 
-Las recetas nuevas usan `/usr/bin/python3` del Ubuntu verificado para ejecutar
-el adaptador y Uniflash; CMake, el generador MCELF y el firmador usan el Python
-configurado en el JSON. No hace falta activar el entorno virtual ni introducir
-`export`. CMake recibe explícitamente el origen, SDK, módulos y configuración.
+### Grabación y consola: siempre explícitas
 
-Después de una compilación y empaquetado correctos, se actualiza el CFG con
-**rutas absolutas reales**, sin `$SDK` ni `$IMAGE`: Uniflash no expande variables
-de shell al leer un archivo `.cfg`. Ese CFG es local, está ignorado por Git y
-se conserva en el mismo sitio en cada ejecución. No se utiliza un bloque `EOF`.
-Se mantienen fuera de publicación el JSON, el CFG, los binarios y los recibos.
-
-### Flasheo explícito, separado de la compilación
-
-Con la placa en **UART BOOT**, reiniciada y con el monitor serie cerrado:
+Cuando se autorice escribir en hardware, con **UART BOOT**, placa reiniciada y
+monitor serie cerrado, desde la aplicación elegida:
 
 ```bash
-just flash-zephyr /dev/ttyACM0
+just flash /dev/ttyACM0
 ```
 
-Adaptar el puerto al dispositivo real; puede consultarse con `just ports`.
-Sin argumento se conserva la selección controlada de un único XDS110 listo
-para UART ROM. La selección abre el puerto y puede afectar DTR/RTS, como se
-explica en la sección 11.5. No hay reintento ni cambio automático de puerto.
+Sustituir el puerto por el real (`just ports` desde la raíz sólo enumera metadatos).
+El puerto se pasa explícitamente al adaptador mediante `--port`; no se debe
+suponer el dispositivo ni dejar otra consola abierta. La apertura puede afectar
+DTR/RTS, como explica la sección 11.5. No hay reintento ni cambio automático de
+puerto.
 
-**Este comando sí escribe flash.** Carga el flash writer del MCU+ SDK, graba
-la aplicación en `0x80000` y hace `flashverify` del mismo archivo y offset.
-Requiere un SBL OSPI compatible previamente instalado: **no escribe el SBL en
-`0x0`, no borra toda la flash y no configura XIP**. Después de terminar sin
-errores, apagar la placa, seleccionar QSPI/OSPI y arrancar observando UART a
-115200, 8N1.
+**`flash` sí escribe flash:** carga el flash writer y ejecuta `flash` y
+`flashverify` de la app en **`0x80000`**. Requiere un SBL OSPI compatible ya
+instalado: **no escribe `0x0`, ni datos PHY, ni XIP; no borra toda la flash**.
+Después de finalizar correctamente, apagar, seleccionar QSPI/OSPI y encender.
+Para observar la consola a **115200, 8N1**, desde la app:
 
-Los perfiles y recetas antiguos (`just config`, `just flash`, `just boot`)
-siguen disponibles, pero **no seleccionan este build nuevo automáticamente**.
-Para esta copia usar los comandos que terminan en `-zephyr`.
+```bash
+just serial /dev/ttyACM0
+```
 
-### Alcance de la comprobación
+`serial` también recibe un puerto explícito, traducido a `--port`. Cerrar el
+monitor antes de volver a grabar. Los perfiles antiguos `just config`, `just flash`
+y `just boot` de la raíz no seleccionan estos builds automáticamente.
 
-`check-zephyr` verifica el origen del caché, placa y SDK, los segmentos
-cargables conservados, primer segmento `PT_NOTE`, core `4`, entrada `0`,
-payload MCELF después del certificado DER, tamaño de ranura y hashes guardados.
-Detecta cambios posteriores de imágenes, CFG, configuración local, `main.c`,
-`prj.conf` y herramientas TI usadas. No sustituye la compilación para detectar
-cambios de cualquier otra fuente o módulo: ejecutar `build-zephyr` tras editar.
-La clave incluida por TI es sólo de desarrollo; estas comprobaciones no
-certifican autenticación segura ni aprobación de producción.
+### Alcance y antecedentes de la comprobación
 
-Un build fallido deja la preparación incompleta y bloquea el flasheo. Un
-intento de flasheo incierto deja `operation.log` y `receipt.json` en el build
-y bloquea el reintento; recompilar no borra ese estado ni acredita que el
-intento anterior haya terminado. Revisar el registro y la placa antes de actuar.
+**Reorganización validada localmente el 2026-11-13:** pasaron 80 pruebas sin
+hardware. Ambas apps completaron `build` mediante west, `package` y `check` en
+sus directorios nuevos. Se contrastaron los 20 SHAs del manifiesto con los
+clones locales y se verificó que los cambios previos de Zephyr/TI y los builds
+antiguos permanecen intactos. No se hicieron instalaciones, descargas, staging,
+commits, push, apertura de puertos ni grabación. El arranque físico sigue pendiente.
 
-**Validación local:** compilación, conversión, firma y comprobación realizadas;
-pruebas sintéticas del adaptador sin hardware mediante `just test`.
-Se conserva el aviso del DTS de la placa sobre `/memory@0` frente a `reg = 0x3c`;
-la compilación termina correctamente, pero no se ha investigado ese aviso.
-**Arranque físico de esta imagen: pendiente.** Una compilación correcta no
-resuelve por sí sola el silencio después de `switching to application`.
+`check` conserva las comprobaciones del origen del caché, placa y SDK,
+segmentos cargables, primer segmento `PT_NOTE`, core `4`, entrada `0`, payload
+MCELF después del certificado DER, tamaño de ranura y hashes de imágenes, CFG,
+configuración y herramientas TI. Para `hola_zephyr` también controla los archivos
+de diagnóstico. No detecta por sí solo cualquier cambio de cualquier módulo:
+tras editar fuentes, repetir **`build`, `package` y `check`**. La clave TI es de
+**desarrollo**; no acredita autenticación segura ni aprobación de producción.
+
+Un build o empaquetado fallido bloquea una grabación incompleta. Un flasheo
+fallido no bloquea el siguiente intento del mismo comando con puerto explícito;
+no exige recompilar si los artefactos siguen válidos. No se guardan logs,
+recibos ni archivos de intentos; los antiguos se ignoran, sin borrarlos.
+Se mantienen hashes, guards y exclusión de operaciones simultáneas.
+
+**Antecedentes, no validación nueva de esta reorganización:** se habían compilado,
+convertido, firmado y comprobado las imágenes localmente, con pruebas sintéticas
+sin hardware (`just test`). Hello World conserva el aviso DTS sobre `/memory@0`
+frente a `reg = 0x3c`, aún sin investigar. David confirmó el 2026-11-12 que
+completó `from guide.md` hasta el final; no se exige repetir el SBL por crear
+otra app. Eso no confirma el arranque de `hola_zephyr` ni de los builds nuevos.
+
+## 13. Aplicación propia: `hola soy zephyr` cada tres segundos
+
+### SBL sin solapamiento de RAM
+
+La comparación con VeriSOM mostró que el SBL del SDK local conservaba la pila
+principal en `[0x7007f300, 0x70083300)` y otras pilas hasta `0x70084700`, dentro
+de la RAM de aplicación desde `0x70080000`. El flujo de `hola_zephyr` ahora
+construye una copia del SBL bajo `apps/hola_zephyr/build/sbl/`, con BSS/pilas
+en `[0x70060000, 0x70080000)`, sin editar ni sustituir archivos del SDK.
+
+Desde `apps/hola_zephyr`: `just build-sbl`, `just build`, `just package`,
+`just check-boot` y `just check`. El empaquetado y la comprobación normales
+también exigen el par SBL/ELF sin solapamiento, contando las pilas y BSS
+`SHF_ALLOC/NOBITS`, y MPU habilitada en la configuración generada. Se mantienen
+las trazas y la compatibilidad MPU de esta app; `hello_world` no se cambia.
+
+**La comprobación es local, no identifica el SBL grabado.** `just flash` desde
+la app sigue actualizando sólo `0x80000`. El nuevo
+`build/sbl/ti-arm-clang/sbl_ospi.release.hs_fs.tiimage` no se instala como parte
+de build/package/check. Reemplazar y verificar el SBL de `0x0` requiere una
+operación expresamente autorizada; grabar sólo la app no corrige el SBL antiguo.
+Detalles y archivos: [README de hola_zephyr](apps/hola_zephyr/README.md#corrección-de-ram-del-sbl-2026-11-13).
+
+Validación local del cambio: 95 pruebas correctas; SBL aislado y app construidos
+y comprobados sin solapamiento. BSS/pilas del nuevo SBL terminan en
+`0x70074700`; el guard rechaza el ELF real anterior. Hello World conserva su
+comprobación sin reconstrucción. Esta fase de implementación no grabó hardware.
+En la instalación posterior autorizada del 2026-11-13 se escribieron y compararon
+SBL y app en ACM1. Una captura posterior, con OSPI/QSPI confirmado por David,
+mostró arranque desde NOR SPI FLASH, banner Zephyr, `[Z8] main` y el saludo.
+Hubo dos secuencias de arranque; David confirmó que la duplicación fue causada
+por él y que la aplicación funciona correctamente. No se considera evidencia
+de resets espontáneos. La prueba no acredita estabilidad prolongada.
+Las identidades de
+las imágenes y el resultado UART están en el README de la app, sección
+"Instalación autorizada y observación". No regrabar para repetir la captura.
+
+[`apps/hola_zephyr/`](apps/hola_zephyr/README.md) usa el mismo flujo por aplicación:
+`just build`, `just package` y `just check` desde su carpeta; `just build-hola`
+desde la raíz sigue combinando los dos primeros pasos. Su build separado es
+`apps/hola_zephyr/build/`. El empaquetado copia allí el flash writer compilado
+del clon y prepara `flash.cfg`; no abre UART.
+
+La app imprime una vez al entrar en `main()` y luego solicita un sueño de tres
+segundos entre mensajes. La prueba host usa sueño simulado: no mide temporización
+real ni demuestra arranque en la placa.
+
+**Antecedente anterior al SBL corregido:** una captura llegaba a Z4 sin Z4A.
+El mapa sitúa a continuación el init de pinctrl TI K3, cuyo
+`pinctrl_ti_k3_init()` llama a `DEVICE_MMIO_MAP`. Se añadieron Z4PA-Z4PD dentro
+del init para localizar la entrada y el retorno del mapeo. La imagen instrumentada
+se compiló y pasó `just check-hola`. Esas hipótesis no establecieron una causa
+del init. La prueba posterior al SBL corregido sí superó pinctrl, UART,
+POST_KERNEL y APPLICATION y llegó a main. Las 81 pruebas correspondían a esa
+etapa histórica; la validación local del SBL elevó la suite a 95 pruebas.
+
+`CONFIG_HOLA_EARLY_UART_TRACE=y` activa la instrumentación directa de UART0.
+El inventario de trazas, flags, overlay, adaptación ARMv7-R y hallazgos del ELF
+se conserva en el [README de la app](apps/hola_zephyr/README.md#prueba-con-mpu-y-diagnóstico).
+**La preparación inicial sólo compiló y comprobó la instrumentación. La captura
+posterior al SBL corregido sí observó el arranque y main en la placa, con los
+límites indicados arriba. No se hicieron commits ni push.**
 
 ## Referencias
 
