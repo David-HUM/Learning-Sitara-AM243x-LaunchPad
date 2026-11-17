@@ -1,0 +1,7 @@
+[manifest]
+path = apps
+file = west.yml
+
+[zephyr]
+base = zephyr
+

@@ -1,0 +1,13 @@
+mainmenu "Hola Zephyr"
+
+source "Kconfig.zephyr"
+
+config HOLA_EARLY_UART_TRACE
+	bool "Trace early boot directly through UART0"
+	depends on CPU_CORTEX_R5
+	default n
+	help
+	  Emit stackless UART markers in reset assembly, kernel startup, VIM,
+	  PRE_KERNEL_1, and main entry.
+	  Early markers use inherited SBL UART0 configuration and bounded
+	  polling without Zephyr console, logger, interrupts or timer.
