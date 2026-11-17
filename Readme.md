@@ -768,6 +768,21 @@ se conserva en el [README de la app](apps/hola_zephyr/README.md#prueba-con-mpu-y
 posterior al SBL corregido sí observó el arranque y main en la placa, con los
 límites indicados arriba. No se hicieron commits ni push.**
 
+## 14. CPSW de referencia, independiente de Hola
+
+[`apps/cpsw_net/`](apps/cpsw_net/README.md) prepara el baseline VeriSOM de un
+puerto J2, sin PTP, con su propio `justfile`: `just config`, `just plan`,
+`just check`, `just test` y `just build`. Conserva intactos el entorno y el
+SBL de `hola_zephyr`. Necesita un workspace limpio Zephyr 4.5.0 separado,
+MCU+ SDK 12.00.00.26 y SysConfig 1.26; no reutiliza ni actualiza los de Hola.
+
+La referencia proviene de un repositorio privado y se copia localmente con
+verificación de hashes. `apps/cpsw_net/reference/` está ignorado: **no publicar
+esas fuentes en este repositorio público sin autorización**. Las recetas no
+instalan, descargan, configuran redes ni programan hardware. El firmware de
+referencia está validado en OSM-AM2434, no acredita adaptación a LaunchPad.
+Preparación del entorno y estado real de validación: README de esa app.
+
 ## Referencias
 
 - [TI LP-AM243](https://www.ti.com/tool/LP-AM243).

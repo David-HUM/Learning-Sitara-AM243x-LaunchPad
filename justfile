@@ -7,6 +7,7 @@ default:
 
 apps:
     @/usr/bin/python3 scripts/zephyr_local.py apps
+    @printf '%s\n' 'cpsw_net -> apps/cpsw_net (workspace independiente, referencia local privada)'
 
 # Inspección local del manifiesto y revisiones; nunca ejecuta west update.
 workspace:
